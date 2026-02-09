@@ -14,15 +14,29 @@ class ScheduleController extends Controller
 {
     public function index(Request $request)
     {
+        /**
+         * =====================================================
+         * TANGGAL YANG SEDANG DILIHAT (ACUAN STATUS)
+         * =====================================================
+         */
         $workDate = $request->query('date')
             ? Carbon::parse($request->query('date'))->toDateString()
             : now()->addDay()->toDateString(); // default besok
 
-        $activeUnits = Unit::query()->where('is_active', true)->count();
+        /**
+         * =====================================================
+         * INFO KAPASITAS
+         * =====================================================
+         */
+        $activeUnits = Unit::where('is_active', true)->count();
         $capacityPerDay = 240;
         $totalCapacity = $activeUnits * $capacityPerDay;
 
-        // Jadwal untuk tanggal terpilih (join biar enak tampil)
+        /**
+         * =====================================================
+         * JADWAL UNIT (STATUS DINAMIS, BUKAN orders.status)
+         * =====================================================
+         */
         $scheduleRows = DB::table('work_chunks')
             ->join('unit_assignments', 'unit_assignments.work_chunk_id', '=', 'work_chunks.id')
             ->join('units', 'units.id', '=', 'unit_assignments.unit_id')
@@ -38,29 +52,54 @@ class ScheduleController extends Controller
                 'orders.customer_name',
                 'orders.pcs_total',
                 'orders.pcs_remaining',
-                'orders.status as order_status',
+
+                // 🔥 STATUS YANG BENAR (FIX UTAMA)
+                DB::raw("
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM work_chunks wc2
+                            WHERE wc2.order_id = orders.id
+                            AND wc2.work_date > '{$workDate}'
+                        )
+                        THEN 'on going'
+                        ELSE 'done'
+                    END as order_status
+                "),
+
             ])
             ->orderBy('units.code')
             ->get();
 
         $scheduledPcs = (int) $scheduleRows->sum('pcs');
 
-        // Orders masuk "hari ini" (ditampung)
+        /**
+         * =====================================================
+         * ORDER MASUK HARI INI (DITUMPUK / BUFFER)
+         * =====================================================
+         */
         $today = now()->toDateString();
-        $todayOrders = Order::query()
-            ->whereDate('order_date', $today)
+        $todayOrders = Order::whereDate('order_date', $today)
             ->latest()
             ->limit(10)
             ->get();
 
-        // Estimasi selesai per order = max(work_date) dari chunk order tsb
+        /**
+         * =====================================================
+         * ESTIMASI SELESAI PER ORDER
+         * =====================================================
+         */
         $finishEstimates = DB::table('work_chunks')
             ->select('order_id', DB::raw('MAX(work_date) as estimated_finish'))
             ->groupBy('order_id')
-            ->pluck('estimated_finish', 'order_id'); // [order_id => date]
+            ->pluck('estimated_finish', 'order_id');
 
-        // Daftar unit (buat toggle cepat) - tampilkan ringkas saja
-        $units = Unit::query()->orderBy('code')->get();
+        /**
+         * =====================================================
+         * DAFTAR UNIT
+         * =====================================================
+         */
+        $units = Unit::orderBy('code')->get();
 
         return view('dashboard', compact(
             'workDate',
@@ -74,6 +113,11 @@ class ScheduleController extends Controller
         ));
     }
 
+    /**
+     * =====================================================
+     * GENERATE JADWAL (SPT)
+     * =====================================================
+     */
     public function run(Request $request, SptDailyScheduler $scheduler)
     {
         $data = $request->validate([
@@ -82,13 +126,19 @@ class ScheduleController extends Controller
 
         $scheduler->runForDate(Carbon::parse($data['work_date']));
 
-        return redirect()->route('dashboard', ['date' => $data['work_date']])
+        return redirect()
+            ->route('dashboard', ['date' => $data['work_date']])
             ->with('success', 'Jadwal berhasil dibuat.');
     }
 
+    /**
+     * =====================================================
+     * TOGGLE UNIT AKTIF / NON AKTIF
+     * =====================================================
+     */
     public function toggleUnit(Unit $unit)
     {
-        $unit->is_active = !$unit->is_active;
+        $unit->is_active = ! $unit->is_active;
         $unit->save();
 
         return back()->with('success', "Status {$unit->code} diubah.");

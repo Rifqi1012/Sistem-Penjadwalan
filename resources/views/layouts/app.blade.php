@@ -16,8 +16,15 @@
                     <div class="text-xs text-zinc-500">Laravel + Tailwind + MySQL</div>
                 </div>
             </div>
-            <div class="text-sm text-zinc-500">
-                {{ now()->format('d M Y, H:i') }}
+            <div class="text-sm text-zinc-500 flex items-center space-x-5">
+                <div>
+                    {{ now()->format('d M Y, H:i') }}
+                </div>
+                <div>
+                    <a href="/histori" class="border hover:bg-green-800 hover:text-white transition-all duration-300 px-5 py-2 rounded-full ">
+                        Histori
+                    </a>
+                </div>
             </div>
         </div>
     </header>

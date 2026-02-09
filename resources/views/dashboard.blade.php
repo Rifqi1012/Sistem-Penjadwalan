@@ -172,9 +172,19 @@
                                     @endif
                                 </td>
                                 <td class="px-4 py-3">
-                                    <span class="rounded-full bg-zinc-100 px-2 py-1 text-xs text-zinc-700">
-                                        {{ $row->order_status }}
-                                    </span>
+                                    @if ($row->order_status === 'done')
+                                        <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                                            Done
+                                        </span>
+                                    @elseif ($row->order_status === 'on_going')
+                                        <span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">
+                                            On Going
+                                        </span>
+                                    @else
+                                        <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                                            {{ strtoupper($row->order_status ?? 'SCHEDULED') }}
+                                        </span>
+                                    @endif
                                 </td>
                             </tr>
                         @empty

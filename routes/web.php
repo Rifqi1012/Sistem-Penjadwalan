@@ -18,6 +18,9 @@ Route::post('/orders', [OrderController::class, 'store'])->name('orders.store');
 Route::get('/history', [OrderController::class, 'history'])->name('history');
 
 Route::post('/units/{unit}/toggle', [ScheduleController::class, 'toggleUnit'])->name('units.toggle');
+Route::post('/units', [ScheduleController::class, 'storeUnit'])->name('units.store');
+Route::delete('/units/{unit}', [ScheduleController::class, 'destroyUnit'])->name('units.destroy');
+
 
 Route::post('/schedule/complete-day', [ScheduleController::class, 'completeDay'])
     ->name('schedule.completeDay');

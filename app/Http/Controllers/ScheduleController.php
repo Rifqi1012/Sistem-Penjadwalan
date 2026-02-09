@@ -156,58 +156,113 @@ class ScheduleController extends Controller
     }
 
     public function completeDay(Request $request)
-{
-    $data = $request->validate([
-        'work_date' => ['required', 'date'],
-    ]);
+    {
+        $data = $request->validate([
+            'work_date' => ['required', 'date'],
+        ]);
 
-    $workDate = \Carbon\Carbon::parse($data['work_date'])->toDateString();
+        $workDate = \Carbon\Carbon::parse($data['work_date'])->toDateString();
 
-    DB::transaction(function () use ($workDate) {
+        DB::transaction(function () use ($workDate) {
 
-        // Ambil semua chunk yang belum done di tanggal itu
-        $chunks = \App\Models\WorkChunk::query()
-            ->whereDate('work_date', $workDate)
-            ->whereIn('status', ['planned', 'in_progress'])
-            ->lockForUpdate()
-            ->get();
+            // Ambil semua chunk yang belum done di tanggal itu
+            $chunks = \App\Models\WorkChunk::query()
+                ->whereDate('work_date', $workDate)
+                ->whereIn('status', ['planned', 'in_progress'])
+                ->lockForUpdate()
+                ->get();
 
-        if ($chunks->isEmpty()) return;
+            if ($chunks->isEmpty()) return;
 
-        // Tandai semua chunk jadi done
-        foreach ($chunks as $chunk) {
-            $chunk->status = 'done';
-            $chunk->finished_at = now();
-            if (!$chunk->started_at) {
-                $chunk->started_at = now();
-            }
-            $chunk->save();
-        }
-
-        // Hitung total pcs per order
-        $grouped = $chunks->groupBy('order_id');
-
-        foreach ($grouped as $orderId => $chunkList) {
-            $order = \App\Models\Order::lockForUpdate()->find($orderId);
-
-            $totalDoneToday = $chunkList->sum('pcs');
-
-            $order->pcs_remaining = max(
-                0,
-                (int)$order->pcs_remaining - (int)$totalDoneToday
-            );
-
-            if ($order->pcs_remaining === 0) {
-                $order->status = 'done';
-            } else {
-                $order->status = 'in_progress';
+            // Tandai semua chunk jadi done
+            foreach ($chunks as $chunk) {
+                $chunk->status = 'done';
+                $chunk->finished_at = now();
+                if (!$chunk->started_at) {
+                    $chunk->started_at = now();
+                }
+                $chunk->save();
             }
 
-            $order->save();
+            // Hitung total pcs per order
+            $grouped = $chunks->groupBy('order_id');
+
+            foreach ($grouped as $orderId => $chunkList) {
+                $order = Order::lockForUpdate()->find($orderId);
+
+                $totalDoneToday = $chunkList->sum('pcs');
+
+                $order->pcs_remaining = max(
+                    0,
+                    (int)$order->pcs_remaining - (int)$totalDoneToday
+                );
+
+                if ($order->pcs_remaining === 0) {
+                    $order->status = 'done';
+                } else {
+                    $order->status = 'in_progress';
+                }
+
+                $order->save();
+            }
+        });
+
+        return back()->with('success', 'Semua chunk pada tanggal tersebut telah diselesaikan.');
+    }
+
+    public function storeUnit(Request $request)
+    {
+        $data = $request->validate([
+            'code' => ['nullable', 'string', 'max:20'],
+            'capacity_per_day' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'is_active' => ['nullable', 'boolean'],
+            'auto_code' => ['nullable', 'boolean'],
+        ]);
+
+        $capacity = (int)($data['capacity_per_day'] ?? 240);
+        $isActive = (bool)($data['is_active'] ?? true);
+        $autoCode = (bool)($data['auto_code'] ?? true);
+
+        // Auto-generate UNIT-XXX jika auto_code aktif / code kosong
+        if ($autoCode || empty($data['code'])) {
+            // Cari nomor terakhir dari format UNIT-XXX
+            $last = Unit::query()
+                ->where('code', 'like', 'UNIT-%')
+                ->orderByDesc('id')
+                ->value('code');
+
+            $nextNumber = 1;
+            if ($last && preg_match('/UNIT-(\d+)/', $last, $m)) {
+                $nextNumber = ((int)$m[1]) + 1;
+            }
+
+            $code = 'UNIT-' . str_pad((string)$nextNumber, 3, '0', STR_PAD_LEFT);
+        } else {
+            $code = strtoupper(trim($data['code']));
         }
-    });
 
-    return back()->with('success', 'Semua chunk pada tanggal tersebut telah diselesaikan.');
-}
+        // Pastikan unik
+        if (\App\Models\Unit::where('code', $code)->exists()) {
+            return back()->withErrors(['code' => "Kode unit $code sudah ada."])->withInput();
+        }
 
+        \App\Models\Unit::create([
+            'code' => $code,
+            'capacity_per_day' => $capacity,
+            'is_active' => $isActive,
+        ]);
+
+        return back()->with('success', "Unit baru berhasil ditambahkan: {$code}");
+    }
+
+    // OPTIONAL: hapus unit
+    public function destroyUnit(Unit $unit)
+    {
+        // kalau unit sudah punya assignment, sebaiknya jangan hard delete.
+        // untuk aman: kita nonaktifkan saja.
+        $unit->is_active = false;
+        $unit->save();
+
+        return back()->with('success', "{$unit->code} dinonaktifkan.");
+    }
 }

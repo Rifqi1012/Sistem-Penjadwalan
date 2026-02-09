@@ -271,13 +271,47 @@
             </div>
         </div>
 
-        {{-- Unit toggle --}}
         <div class="rounded-3xl border bg-white p-5">
             <div class="flex items-center justify-between">
                 <h3 class="font-semibold">Kelola Unit (Aktif/Rusak)</h3>
-                <div class="text-xs text-zinc-500">Klik untuk toggle</div>
+                <div class="text-xs text-zinc-500">Klik unit untuk toggle</div>
             </div>
 
+            {{-- Tambah Unit --}}
+            <div class="mt-4 rounded-2xl border bg-zinc-50 p-4">
+                <div class="font-semibold text-sm">Tambah Unit</div>
+                <div class="text-xs text-zinc-500 mb-3">
+                    Kosongkan kode untuk auto-generate (UNIT-XXX). Default kapasitas 240 pcs/hari.
+                </div>
+
+                <form method="POST" action="{{ route('units.store') }}" class="grid gap-3 sm:grid-cols-4">
+                    @csrf
+
+                    <div class="sm:col-span-2">
+                        <label class="text-xs text-zinc-600">Kode Unit (opsional)</label>
+                        <input name="code" value="{{ old('code') }}"
+                               placeholder="kosongkan untuk auto (UNIT-XXX)"
+                               class="mt-1 w-full rounded-2xl border px-3 py-2 text-sm outline-none focus:ring focus:ring-zinc-200" />
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-zinc-600">Kapasitas / hari</label>
+                        <input type="number" min="1" name="capacity_per_day" value="{{ old('capacity_per_day', 240) }}"
+                               class="mt-1 w-full rounded-2xl border px-3 py-2 text-sm outline-none focus:ring focus:ring-zinc-200" />
+                    </div>
+
+                    <div class="flex items-end gap-2">
+                        <input type="hidden" name="auto_code" value="1">
+                        <input type="hidden" name="is_active" value="1">
+
+                        <button class="w-full rounded-2xl bg-zinc-900 px-4 py-2.5 text-sm text-white hover:opacity-95">
+                            Tambah
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            {{-- Grid unit --}}
             <div class="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 max-h-72 overflow-auto pr-1">
                 @foreach ($units as $u)
                     <form method="POST" action="{{ route('units.toggle', $u) }}">

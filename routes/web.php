@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ScheduleController;
 
+Route::get('/', fn() => redirect('/dashboard'));
 
 Route::get('/dashboard', [ScheduleController::class, 'index'])->name('dashboard');
 

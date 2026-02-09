@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
@@ -43,5 +44,19 @@ class OrderController extends Controller
         ]);
 
         return back()->with('success', 'Order berhasil ditambahkan (ditampung).');
+    }
+
+    public function history()
+    {
+        $orders = Order::query()
+            ->select([
+                'orders.*',
+                DB::raw('(SELECT MAX(work_date) FROM work_chunks WHERE work_chunks.order_id = orders.id) as estimated_finish'),
+            ])
+            ->latest('orders.created_at')
+            ->paginate(15)
+            ->withQueryString();
+
+        return view('history', compact('orders'));
     }
 }

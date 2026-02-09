@@ -18,7 +18,7 @@
         <div class="rounded-3xl bg-white border p-4">
             <div class="text-sm text-zinc-500">Terjadwal ({{ \Carbon\Carbon::parse($workDate)->format('d M Y') }})</div>
             <div class="mt-1 text-2xl font-semibold">{{ number_format($scheduledPcs) }} pcs</div>
-            <div class="mt-1 text-xs text-zinc-400">Hasil generate schedule</div>
+            <div class="mt-1 text-xs text-zinc-400">Planned/On progress di tanggal ini</div>
         </div>
         <div class="rounded-3xl bg-white border p-4">
             <div class="text-sm text-zinc-500">Sisa kapasitas</div>
@@ -40,7 +40,7 @@
             <div>
                 <label class="text-sm font-medium">Nama Pemesan</label>
                 <input name="customer_name" value="{{ old('customer_name') }}"
-                       class="mt-1 w-full rounded-2xl border px-3 py-2 outline-none focus:ring"
+                       class="mt-1 w-full rounded-2xl border px-3 py-2 outline-none focus:ring focus:ring-zinc-200"
                        placeholder="contoh: Sheli" />
             </div>
 
@@ -48,13 +48,13 @@
                 <div>
                     <label class="text-sm font-medium">Tanggal Masuk</label>
                     <input type="date" name="order_date" value="{{ old('order_date', now()->toDateString()) }}"
-                           class="mt-1 w-full rounded-2xl border px-3 py-2 outline-none focus:ring" />
+                           class="mt-1 w-full rounded-2xl border px-3 py-2 outline-none focus:ring focus:ring-zinc-200" />
                     <div class="mt-1 text-xs text-zinc-500">Diproses mulai besok otomatis</div>
                 </div>
                 <div>
                     <label class="text-sm font-medium">Bal (opsional)</label>
                     <input type="number" min="0" name="bales" value="{{ old('bales', 0) }}"
-                           class="mt-1 w-full rounded-2xl border px-3 py-2 outline-none focus:ring"
+                           class="mt-1 w-full rounded-2xl border px-3 py-2 outline-none focus:ring focus:ring-zinc-200"
                            placeholder="mis: 2" />
                 </div>
             </div>
@@ -62,7 +62,7 @@
             <div>
                 <label class="text-sm font-medium">Pcs Total (opsional)</label>
                 <input type="number" min="0" name="pcs_total" value="{{ old('pcs_total', 0) }}"
-                       class="mt-1 w-full rounded-2xl border px-3 py-2 outline-none focus:ring"
+                       class="mt-1 w-full rounded-2xl border px-3 py-2 outline-none focus:ring focus:ring-zinc-200"
                        placeholder="isi kalau tidak pakai bal" />
                 <div class="mt-1 text-xs text-zinc-500">
                     Jika pcs_total kosong/0, sistem pakai bal × 800.
@@ -75,7 +75,10 @@
         </form>
 
         <div class="mt-6">
-            <div class="text-sm font-semibold mb-2">Order Masuk Hari Ini</div>
+            <div class="flex items-center justify-between mb-2">
+                <div class="text-sm font-semibold">Order Masuk Hari Ini</div>
+                <a href="{{ route('history') }}" class="text-xs text-zinc-600 hover:underline">Lihat history</a>
+            </div>
             <div class="divide-y rounded-2xl border">
                 @forelse ($todayOrders as $o)
                     <div class="p-3 flex items-center justify-between gap-3">
@@ -85,7 +88,9 @@
                                 {{ number_format($o->pcs_total) }} pcs · start {{ \Carbon\Carbon::parse($o->start_date)->format('d M') }}
                             </div>
                         </div>
-                        <span class="text-xs rounded-full bg-zinc-100 px-2 py-1 text-zinc-600">{{ $o->status }}</span>
+                        <span class="text-xs rounded-full bg-zinc-100 px-2 py-1 text-zinc-600">
+                            {{ $o->status }}
+                        </span>
                     </div>
                 @empty
                     <div class="p-3 text-sm text-zinc-500">Belum ada order hari ini.</div>
@@ -97,21 +102,46 @@
     {{-- Generate schedule + tabel schedule --}}
     <section class="lg:col-span-7 space-y-6">
 
+        {{-- Card Generate + Start Production --}}
         <div class="rounded-3xl border bg-white p-5">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold">Generate Jadwal (SPT)</h2>
-                    <p class="text-sm text-zinc-500">Pecah order → chunk ≤ 240 pcs → SPT (chunk kecil dulu) → assign ke unit aktif.</p>
+                    <h2 class="text-lg font-semibold">Jadwal Produksi (SPT)</h2>
+                    <p class="text-sm text-zinc-500">
+                        Generate hanya membuat jadwal <b>planned</b>. Untuk mulai kerja, klik <b>Start Production</b>.
+                    </p>
                 </div>
 
-                <form method="POST" action="{{ route('schedule.run') }}" class="flex items-center gap-2">
-                    @csrf
-                    <input type="date" name="work_date" value="{{ $workDate }}"
-                           class="rounded-2xl border px-3 py-2 outline-none focus:ring" />
-                    <button class="rounded-2xl bg-emerald-600 px-4 py-2.5 text-white hover:opacity-95">
-                        Generate
-                    </button>
-                </form>
+                <div class="flex flex-col sm:flex-row items-stretch gap-2">
+                    {{-- Generate --}}
+                    <form method="POST" action="{{ route('schedule.run') }}" class="flex items-center gap-2">
+                        @csrf
+                        <input type="date" name="work_date" value="{{ $workDate }}"
+                               class="rounded-2xl border px-3 py-2 outline-none focus:ring focus:ring-zinc-200" />
+                        <button class="rounded-2xl bg-emerald-600 px-4 py-2.5 text-white hover:opacity-95">
+                            Generate
+                        </button>
+                    </form>
+
+                    {{-- Start Production --}}
+                    <form method="POST" action="{{ route('schedule.start') }}" class="flex items-center">
+                        @csrf
+                        <input type="hidden" name="work_date" value="{{ $workDate }}">
+                        <button class="rounded-2xl bg-blue-600 px-4 py-2.5 text-white hover:opacity-95">
+                            Start 
+                        </button>
+                    </form>
+
+                    <form method="POST" action="{{ route('schedule.completeDay') }}">
+        @csrf
+        <input type="hidden" name="work_date" value="{{ $workDate }}">
+        <button
+            class="rounded-2xl bg-rose-600 px-4 py-2.5 text-white hover:opacity-95">
+            Complete All Today
+        </button>
+    </form>
+
+                </div>
             </div>
 
             <div class="mt-4 flex items-center gap-2 text-sm">
@@ -124,16 +154,21 @@
                     Hari ini
                 </a>
                 <div class="ml-auto text-xs text-zinc-500">
-                    Menampilkan jadwal tanggal: <span class="font-medium text-zinc-800">{{ \Carbon\Carbon::parse($workDate)->format('d M Y') }}</span>
+                    Menampilkan jadwal tanggal:
+                    <span class="font-medium text-zinc-800">{{ \Carbon\Carbon::parse($workDate)->format('d M Y') }}</span>
                 </div>
             </div>
         </div>
 
+        {{-- Table Jadwal --}}
         <div class="rounded-3xl border bg-white overflow-hidden">
             <div class="p-5 border-b">
                 <div class="flex items-center justify-between">
                     <h3 class="font-semibold">Jadwal Unit</h3>
                     <div class="text-xs text-zinc-500">Total row: {{ $scheduleRows->count() }}</div>
+                </div>
+                <div class="mt-1 text-xs text-zinc-500">
+                    Chunk status: <b>planned</b> (baru dijadwalkan), <b>in_progress</b> (sedang dikerjakan), <b>done</b> (selesai).
                 </div>
             </div>
 
@@ -146,22 +181,36 @@
                             <th class="px-4 py-3 text-right font-medium">Chunk (pcs)</th>
                             <th class="px-4 py-3 text-right font-medium">Order Total</th>
                             <th class="px-4 py-3 text-left font-medium">Estimasi selesai</th>
-                            <th class="px-4 py-3 text-left font-medium">Status</th>
+                            <th class="px-4 py-3 text-left font-medium">Order Status</th>
+                            <th class="px-4 py-3 text-left font-medium">Chunk Status</th>
+                            <th class="px-4 py-3 text-left font-medium">Aksi</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y">
                         @forelse ($scheduleRows as $row)
                             @php
                                 $est = $finishEstimates[$row->order_id] ?? null;
+
+                                // Badge order status
+                                $orderStatus = $row->order_status ?? 'queued';
+
+                                // Badge chunk status
+                                $chunkStatus = $row->chunk_status ?? 'planned';
                             @endphp
+
                             <tr class="hover:bg-zinc-50">
                                 <td class="px-4 py-3 font-medium">{{ $row->unit_code }}</td>
+
                                 <td class="px-4 py-3">
                                     <div class="font-medium">{{ $row->customer_name }}</div>
-                                    <div class="text-xs text-zinc-500">Order #{{ $row->order_id }}</div>
+                                    <div class="text-xs text-zinc-500">
+                                        Order #{{ $row->order_id }} · sisa {{ number_format($row->pcs_remaining) }} pcs
+                                    </div>
                                 </td>
+
                                 <td class="px-4 py-3 text-right tabular-nums">{{ number_format($row->pcs) }}</td>
                                 <td class="px-4 py-3 text-right tabular-nums">{{ number_format($row->pcs_total) }}</td>
+
                                 <td class="px-4 py-3">
                                     @if ($est)
                                         <span class="rounded-full bg-zinc-100 px-2 py-1 text-xs text-zinc-700">
@@ -171,25 +220,48 @@
                                         <span class="text-xs text-zinc-500">-</span>
                                     @endif
                                 </td>
+
+                                {{-- ORDER STATUS --}}
                                 <td class="px-4 py-3">
-                                    @if ($row->order_status === 'done')
-                                        <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
-                                            Done
-                                        </span>
-                                    @elseif ($row->order_status === 'on_going')
-                                        <span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">
-                                            On Going
-                                        </span>
+                                    @if ($orderStatus === 'done')
+                                        <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">DONE</span>
+                                    @elseif ($orderStatus === 'in_progress')
+                                        <span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">IN PROGRESS</span>
+                                    @elseif ($orderStatus === 'scheduled')
+                                        <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">SCHEDULED</span>
                                     @else
-                                        <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
-                                            {{ strtoupper($row->order_status ?? 'SCHEDULED') }}
-                                        </span>
+                                        <span class="rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700">QUEUED</span>
+                                    @endif
+                                </td>
+
+                                {{-- CHUNK STATUS --}}
+                                <td class="px-4 py-3">
+                                    @if ($chunkStatus === 'done')
+                                        <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">DONE</span>
+                                    @elseif ($chunkStatus === 'in_progress')
+                                        <span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">IN PROGRESS</span>
+                                    @else
+                                        <span class="rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700">PLANNED</span>
+                                    @endif
+                                </td>
+
+                                {{-- ACTION --}}
+                                <td class="px-4 py-3">
+                                    @if ($chunkStatus !== 'done')
+                                        <form method="POST" action="{{ route('chunks.done', $row->chunk_id) }}">
+                                            @csrf
+                                            <button class="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs text-white hover:opacity-95">
+                                                Mark Done
+                                            </button>
+                                        </form>
+                                    @else
+                                        <span class="text-xs text-zinc-400">—</span>
                                     @endif
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="px-4 py-10 text-center text-zinc-500">
+                                <td colspan="8" class="px-4 py-10 text-center text-zinc-500">
                                     Belum ada jadwal untuk tanggal ini. Klik <b>Generate</b>.
                                 </td>
                             </tr>

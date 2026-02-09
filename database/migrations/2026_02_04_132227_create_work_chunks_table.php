@@ -14,11 +14,12 @@ return new class extends Migration
         Schema::create('work_chunks', function (Blueprint $table) {
             $table->id();
             $table->foreignId('order_id')->constrained()->cascadeOnDelete();
-            $table->date('work_date');                   // tanggal produksi (mis: besok)
-            $table->unsignedSmallInteger('pcs');         // <= 240
-            $table->enum('status', ['planned', 'done'])->default('planned');
+            $table->date('work_date');
+            $table->unsignedSmallInteger('pcs');
+            $table->enum('status', ['planned', 'in_progress', 'done'])->default('planned');
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
             $table->timestamps();
-
             $table->index(['work_date']);
         });
     }

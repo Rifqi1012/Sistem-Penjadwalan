@@ -11,130 +11,107 @@ use Illuminate\Support\Facades\DB;
 
 class SptDailyScheduler
 {
-    // Kapasitas 1 mesin per hari
-    const PCS_PER_UNIT = 240;
-
-    public function runForDate(Carbon $startDate): void
+    /**
+     * Generate jadwal untuk tanggal produksi tertentu.
+     *
+     * Realistis:
+     * - Generate hanya membuat chunk status "planned"
+     * - Tidak mengurangi pcs_remaining (progress berkurang saat chunk DONE)
+     *
+     * SPT yang benar:
+     * - Urutkan ORDER berdasarkan processing time terpendek (pcs_remaining terkecil)
+     * - Baru split jadi chunk dan distribusikan ke unit
+     */
+    public function generateForDate(Carbon $workDate): void
     {
-        DB::transaction(function () use ($startDate) {
+        DB::transaction(function () use ($workDate) {
+            $workDateStr = $workDate->toDateString();
 
-            /**
-             * =====================================================
-             * 1. HAPUS JADWAL MASA DEPAN (JANGAN SENTUH MASA LALU)
-             * =====================================================
-             */
-            $futureChunkIds = WorkChunk::whereDate('work_date', '>', $startDate)
+            // 1) Unit aktif
+            $units = Unit::query()
+                ->where('is_active', true)
+                ->orderBy('id')
+                ->get();
+
+            if ($units->isEmpty()) return;
+
+            // 2) Regenerate aman: hapus planned schedule tanggal itu
+            $chunkIds = WorkChunk::query()
+                ->whereDate('work_date', $workDateStr)
+                ->where('status', 'planned')
                 ->pluck('id');
 
-            UnitAssignment::whereIn('work_chunk_id', $futureChunkIds)->delete();
-            WorkChunk::whereIn('id', $futureChunkIds)->delete();
-
-            /**
-             * =====================================================
-             * 2. UPDATE STATUS ORDER BARU → SCHEDULED
-             * =====================================================
-             */
-            Order::where('pcs_remaining', '>', 0)
-                ->where('status', 'pending')
-                ->update([
-                    'status' => 'scheduled'
-                ]);
-
-            /**
-             * =====================================================
-             * 3. AMBIL UNIT AKTIF
-             * =====================================================
-             */
-            $units = Unit::where('is_active', true)
-                ->orderBy('code')
-                ->get();
-
-            if ($units->isEmpty()) {
-                return;
+            if ($chunkIds->isNotEmpty()) {
+                UnitAssignment::query()->whereIn('work_chunk_id', $chunkIds)->delete();
+                WorkChunk::query()->whereIn('id', $chunkIds)->delete();
             }
 
-            /**
-             * =====================================================
-             * 4. AMBIL ORDER (SPT + FIFO)
-             * =====================================================
-             */
-            $orders = Order::where('pcs_remaining', '>', 0)
-                ->orderBy('pcs_remaining') // SPT
-                ->orderBy('order_date')    // FIFO jika sama
+            // 3) Ambil order eligible:
+            // - start_date == workDate (order baru mulai hari itu)
+            // - atau backlog (pcs_remaining > 0)
+            // ✅ SPT: order by pcs_remaining ASC (job kecil dulu)
+            $orders = Order::query()
+                ->where(function ($q) use ($workDateStr) {
+                    $q->whereDate('start_date', $workDateStr)
+                        ->orWhere('pcs_remaining', '>', 0);
+                })
+                ->whereIn('status', ['queued', 'scheduled', 'in_progress'])
+                ->where('pcs_remaining', '>', 0)
+                ->orderBy('pcs_remaining', 'asc')   // 🔥 SPT ORDER-LEVEL
+                ->orderBy('id', 'asc')              // tie-breaker stabil
                 ->get();
 
-            /**
-             * =====================================================
-             * 5. INISIALISASI HARI & KAPASITAS
-             * =====================================================
-             */
-            $currentDate = $startDate->copy();
+            if ($orders->isEmpty()) return;
 
-            $unitCapacity = [];
-            foreach ($units as $unit) {
-                $unitCapacity[$unit->id] = self::PCS_PER_UNIT;
-            }
+            // 4) Buat chunk rencana kerja (planned) dengan urutan SPT order-level
+            // Kapasitas: 1 unit max 240 pcs/hari.
+            // Kita alokasikan 1 chunk per unit, chunk <= 240.
+            $maxChunksToday = $units->count();
+            $chunkPlans = [];
+            $chunkSize = 240;
 
-            /**
-             * =====================================================
-             * 6. PROSES PENJADWALAN PRODUKSI
-             * =====================================================
-             */
             foreach ($orders as $order) {
+                $remaining = (int) $order->pcs_remaining;
 
-                while ($order->pcs_remaining > 0) {
-
-                    $assigned = false;
-
-                    foreach ($units as $unit) {
-
-                        // Jika unit masih punya kapasitas hari ini
-                        if ($unitCapacity[$unit->id] > 0) {
-
-                            $chunkSize = min(
-                                self::PCS_PER_UNIT,
-                                $unitCapacity[$unit->id],
-                                $order->pcs_remaining
-                            );
-
-                            // Buat chunk kerja
-                            $chunk = WorkChunk::create([
-                                'order_id' => $order->id,
-                                'pcs' => $chunkSize,
-                                'work_date' => $currentDate->toDateString(),
-                            ]);
-
-                            // Assign ke unit
-                            UnitAssignment::create([
-                                'work_chunk_id' => $chunk->id,
-                                'unit_id' => $unit->id,
-                            ]);
-
-                            // Update kapasitas & sisa pcs
-                            $unitCapacity[$unit->id] -= $chunkSize;
-                            $order->pcs_remaining -= $chunkSize;
-
-                            $assigned = true;
-                            break;
-                        }
-                    }
-
-                    /**
-                     * Jika semua unit penuh,
-                     * lanjut ke hari berikutnya
-                     */
-                    if (! $assigned) {
-                        $currentDate->addDay();
-
-                        foreach ($units as $unit) {
-                            $unitCapacity[$unit->id] = self::PCS_PER_UNIT;
-                        }
-                    }
+                while ($remaining > 0 && count($chunkPlans) < $maxChunksToday) {
+                    $pcs = min($chunkSize, $remaining);
+                    $chunkPlans[] = [
+                        'order_id' => $order->id,
+                        'pcs' => $pcs,
+                    ];
+                    $remaining -= $pcs;
                 }
 
-                // Simpan sisa pcs order (tanpa ubah status!)
-                $order->save();
+                if (count($chunkPlans) >= $maxChunksToday) {
+                    break;
+                }
             }
+
+            if (empty($chunkPlans)) return;
+
+            // 5) Simpan chunk + assign ke unit (urut unit)
+            foreach ($chunkPlans as $i => $plan) {
+                $chunk = WorkChunk::create([
+                    'order_id' => $plan['order_id'],
+                    'work_date' => $workDateStr,
+                    'pcs' => $plan['pcs'],
+                    'status' => 'planned',
+                ]);
+
+                UnitAssignment::create([
+                    'work_chunk_id' => $chunk->id,
+                    'unit_id' => $units[$i]->id,
+                    'sequence' => 1,
+                ]);
+            }
+
+            // 6) Set status order yang kebagian jadwal jadi scheduled (kalau sebelumnya queued)
+            $scheduledOrderIds = collect($chunkPlans)->pluck('order_id')->unique()->values();
+
+            Order::query()
+                ->whereIn('id', $scheduledOrderIds)
+                ->where('status', 'queued')
+                ->update(['status' => 'scheduled']);
         });
     }
 }

@@ -21,15 +21,17 @@
                     {{ now()->format('d M Y, H:i') }}
                 </div>
                 <div>
-                    <a href="/histori" class="border hover:bg-green-800 hover:text-white transition-all duration-300 px-5 py-2 rounded-full ">
+                    <a href="{{ route('history') }}"
+                    class="border hover:bg-green-800 hover:text-white transition-all duration-300 px-5 py-2 rounded-full">
                         Histori
                     </a>
+
                 </div>
             </div>
         </div>
     </header>
 
-    <main class="mx-auto max-w-7xl px-4 py-6">
+    <main class="mx-auto max-w-8xl px-4 py-6">
         @if (session('success'))
             <div class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
                 {{ session('success') }}

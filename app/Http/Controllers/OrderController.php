@@ -6,6 +6,7 @@ use App\Models\Order;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\EstimateFinishService;
 
 class OrderController extends Controller
 {
@@ -46,17 +47,23 @@ class OrderController extends Controller
         return back()->with('success', 'Order berhasil ditambahkan (ditampung).');
     }
 
-    public function history()
+    public function history(EstimateFinishService $estimator)
     {
         $orders = Order::query()
             ->select([
                 'orders.*',
-                DB::raw('(SELECT MAX(work_date) FROM work_chunks WHERE work_chunks.order_id = orders.id) as estimated_finish'),
+                DB::raw('(SELECT MAX(work_date) FROM work_chunks WHERE work_chunks.order_id = orders.id) as scheduled_finish'),
             ])
             ->latest('orders.created_at')
             ->paginate(15)
             ->withQueryString();
 
-        return view('history', compact('orders'));
+        // startWorkDate: minimal mulai dari besok (atau paling awal start_date dari order yang belum selesai)
+        $startWorkDate = now()->addDay();
+
+        // Forecast untuk yang belum selesai
+        $forecast = $estimator->estimateAll($startWorkDate, 'SPT');
+
+        return view('history', compact('orders', 'forecast'));
     }
 }
